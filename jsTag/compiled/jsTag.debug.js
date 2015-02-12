@@ -52,6 +52,19 @@ jsTag.filter('toArray', function() {
     return objectsAsArray;
   };
 });
+
+jsTag.filter('tagsToArray', function() {
+  return function(input) {
+    var objectsAsArray = [];
+    for (var key in input) {
+      var value = input[key];
+      objectsAsArray.push(value.value);
+    }
+
+    return objectsAsArray;
+  };
+});
+
 var jsTag = angular.module('jsTag');
 
 // Tag Model
@@ -220,6 +233,18 @@ jsTag.factory('JSTagsCollection', ['JSTag', '$filter', function(JSTag, $filter) 
     }
 
     this._editedTag = null;
+  }
+
+  JSTagsCollection.prototype.resetTags = function(tags) {
+      JSTagsCollection.call(this, tags);
+  }
+
+  JSTagsCollection.prototype.getTags = function() {
+      var tags = [];
+      for(var key in this.tags) {
+          tags.push(this.tags[key].value);
+      }
+      return tags;
   }
 
   return JSTagsCollection;
@@ -411,7 +436,7 @@ jsTag.factory('TagsInputService', ['JSTag', 'JSTagsCollection', function(JSTag, 
   };
 
   TagsHandler.prototype.tagDblClicked = function(tag) {
-    var editAllowed = this.options.edit;
+    var editAllowed = false;
     if (editAllowed) {
       // Set tag as edit
       this.tagsCollection.setEditedTag(tag);
@@ -497,11 +522,11 @@ jsTag.factory('TagsInputService', ['JSTag', 'JSTagsCollection', function(JSTag, 
 var jsTag = angular.module('jsTag');
 var jsTag = angular.module('jsTag');
 
-jsTag.controller('JSTagMainCtrl', ['$attrs', '$scope', 'InputService', 'TagsInputService', 'jsTagDefaults', function($attrs, $scope, InputService, TagsInputService, jsTagDefaults) {
+jsTag.controller('JSTagMainCtrl', ['$scope', 'InputService', 'TagsInputService', 'jsTagDefaults', function($scope, InputService, TagsInputService, jsTagDefaults) {
   // Parse user options and merge with defaults
   var userOptions = {};
   try {
-    userOptions = $scope.$eval($attrs.jsTagOptions);
+    userOptions = $scope.jsTagOptions;
   } catch(e) {
     console.log("jsTag Error: Invalid user options, using defaults only");
   }
@@ -525,6 +550,16 @@ jsTag.controller('JSTagMainCtrl', ['$attrs', '$scope', 'InputService', 'TagsInpu
   var tagsCollection = $scope.tagsInputService.tagsCollection;
   $scope.tagsCollection = tagsCollection;
 
+  if ($scope.model) {
+    $scope.$watchCollection('model', function(oldValue, newValue) {
+        $scope.tagsCollection.resetTags($scope.model || []);
+    });
+
+    $scope.$watchCollection('tagsCollection.tags', function(oldValue, newValue) {
+        $scope.model = tagsCollection.getTags();
+    });
+  }
+
   // TODO: Should be inside inside tagsCollection.js
   // On every change to editedTags keep isThereAnEditedTag posted
   $scope.$watch('tagsCollection._editedTag', function(newValue, oldValue) {
@@ -540,14 +575,20 @@ jsTag.controller('JSTagMainCtrl', ['$attrs', '$scope', 'InputService', 'TagsInpu
 var jsTag = angular.module('jsTag');
 
 // TODO: Maybe add A to 'restrict: E' for support in IE 8?
-jsTag.directive('jsTag', ['$templateCache', function($templateCache) {
+jsTag.directive('jsTag', [function() {
   return {
     restrict: 'E',
-    scope: true,
+    scope: {
+        'typeaheadOptions': '=',
+        'typeaheadData': '=',
+        'jsTagOptions': '=',
+        'model': '='
+    },
     controller: 'JSTagMainCtrl',
     templateUrl: function($element, $attrs) {
-      var mode = $attrs.jsTagMode || "default";
-      return 'jsTag/source/templates/' + mode + '/js-tag.html';
+      var mode = $attrs.typeaheadData ? "typeahead" : "default";
+      var container = $attrs.jsTagContainer || "inline";
+      return 'jsTag/source/templates/' + mode + '/' + container + '/js-tag.html';
     }
   }
 }]);
@@ -687,90 +728,57 @@ jsTag.directive('jsTagTypeahead', function () {
 
 angular.module("jsTag").run(["$templateCache", function($templateCache) {
 
-  $templateCache.put("jsTag/source/templates/default/js-tag.html",
-    "<div\n" +
-    "  class=\"jt-editor\"\n" +
-    "  ng-click=\"inputService.focusInput()\" >\n" +
-    "  <span\n" +
-    "    ng-repeat=\"tag in tagsCollection.tags | toArray:orderBy:'id'\"\n" +
-    "    ng-switch=\"tagsCollection.isTagEdited(tag)\">\n" +
-    "    <span\n" +
-    "      ng-switch-when=\"false\"\n" +
-    "      class=\"jt-tag active-{{tagsCollection.isTagActive(tag)}}\">\n" +
-    "      <span\n" +
-    "        class=\"value\"\n" +
-    "        ng-click=\"tagsInputService.tagClicked(tag)\"\n" +
-    "        ng-dblclick=\"tagsInputService.tagDblClicked(tag)\">\n" +
-    "        {{tag.value}}\n" +
-    "      </span>\n" +
-    "      <span class=\"remove-button\" ng-click=\"tagsCollection.removeTag(tag.id)\">{{options.texts.removeSymbol}}</span>\n" +
-    "    </span>\n" +
-    "    <span\n" +
-    "      ng-switch-when=\"true\">\n" +
-    "      <input\n" +
-    "        type=\"text\"\n" +
-    "        class=\"jt-tag-edit\"\n" +
-    "        focus-once\n" +
-    "        ng-model=\"tag.value\"\n" +
-    "        data-tag-id=\"{{tag.id}}\"\n" +
-    "        ng-keydown=\"inputService.tagInputKeydown(tagsCollection, {$event: $event})\"\n" +
-    "        placeholder=\"{{options.texts.inputPlaceHolder}}\"\n" +
-    "        auto-grow\n" +
-    "        />\n" +
-    "    </span>\n" +
-    "  </span>\n" +
-    "  <input\n" +
-    "    class=\"jt-tag-new\"\n" +
-    "    type=\"text\"\n" +
-    "    focus-me=\"inputService.isWaitingForInput\"\n" +
-    "    ng-model=\"inputService.input\"\n" +
-    "    ng-hide=\"isThereAnEditedTag\"\n" +
-    "    ng-keydown=\"inputService.onKeydown(inputService, tagsCollection, {$event: $event})\"\n" +
-    "    placeholder=\"{{options.texts.inputPlaceHolder}}\"\n" +
-    "    auto-grow\n" +
-    "  />\n" +
-    "  <input\n" +
-    "    class=\"jt-fake-input\"\n" +
-    "    focus-me=\"isThereAnActiveTag\"\n" +
-    "    ng-keydown=\"tagsInputService.onActiveTagKeydown(inputService, {$event: $event})\"\n" +
-    "    ng-blur=\"tagsInputService.onActiveTagBlur()\" />\n" +
-    "</div>\n"
-  );
+  var tagList = function(inputOptions) {
+      return "" +
+          "  <span\n" +
+          "    ng-repeat=\"tag in tagsCollection.tags | toArray:orderBy:'id'\"\n" +
+          "    ng-switch=\"tagsCollection.isTagEdited(tag)\">\n" +
+          "    <span\n" +
+          "      ng-switch-when=\"false\"\n" +
+          "      class=\"jt-tag active-{{tagsCollection.isTagActive(tag)}}\">\n" +
+          "      <span\n" +
+          "        class=\"value\"\n" +
+          "        ng-click=\"tagsInputService.tagClicked(tag)\"\n" +
+          "        ng-dblclick=\"tagsInputService.tagDblClicked(tag)\">\n" +
+          "        {{tag.value}}\n" +
+          "      </span>\n" +
+          "      <span class=\"remove-button\" ng-click=\"tagsCollection.removeTag(tag.id)\">{{options.texts.removeSymbol}}</span>\n" +
+          "    </span>\n" +
+          "    <span\n" +
+          "      ng-switch-when=\"true\">\n" +
+          "      <input\n" +
+          "        type=\"text\"\n" +
+          "        class=\"jt-tag-edit\"\n" +
+          "        focus-once\n" +
+          "        ng-model=\"tag.value\"\n" +
+          "        data-tag-id=\"{{tag.id}}\"\n" +
+          "        ng-keydown=\"inputService.tagInputKeydown(tagsCollection, {$event: $event})\"\n" +
+          "        placeholder=\"{{options.texts.inputPlaceHolder}}\"\n" +
+          "        auto-grow\n" + inputOptions +
+          "        />\n" +
+          "    </span>\n" +
+          "  </span>\n"
+  };
 
-  $templateCache.put("jsTag/source/templates/typeahead/js-tag.html",
-    "<div\n" +
-    "  class=\"jt-editor\"\n" +
-    "  ng-click=\"inputService.focusInput()\" >\n" +
-    "  <span\n" +
-    "    ng-repeat=\"tag in tagsCollection.tags | toArray:orderBy:'id'\"\n" +
-    "    ng-switch=\"tagsCollection.isTagEdited(tag)\">\n" +
-    "    <span\n" +
-    "      ng-switch-when=\"false\"\n" +
-    "      class=\"jt-tag active-{{tagsCollection.isTagActive(tag)}}\">\n" +
-    "      <span\n" +
-    "        class=\"value\"\n" +
-    "        ng-click=\"tagsInputService.tagClicked(tag)\"\n" +
-    "        ng-dblclick=\"tagsInputService.tagDblClicked(tag)\">\n" +
-    "        {{tag.value}}\n" +
-    "      </span>\n" +
-    "      <span class=\"remove-button\" ng-click=\"tagsCollection.removeTag(tag.id)\">{{options.texts.removeSymbol}}</span>\n" +
-    "    </span>\n" +
-    "    <span\n" +
-    "      ng-switch-when=\"true\">\n" +
-    "      <input\n" +
-    "        type=\"text\"\n" +
-    "        class=\"jt-tag-edit\"\n" +
-    "        focus-once\n" +
-    "        ng-model=\"tag.value\"\n" +
-    "        data-tag-id=\"{{tag.id}}\"\n" +
-    "        ng-keydown=\"inputService.tagInputKeydown(tagsCollection, {$event: $event})\"\n" +
-    "        placeholder=\"{{options.texts.inputPlaceHolder}}\"\n" +
-    "        auto-grow\n" +
-    "        options=\"exampleOptions\" datasets=\"exampleData\"\n" +
-    "        sf-typeahead\n" +
-    "        />\n" +
-    "    </span>\n" +
-    "  </span>\n" +
+  var template = function (isTypeahead, inContainer) {
+    var result = [];
+    var tags = tagList(inputOptions);
+    var inputOptions  = isTypeahead ? "options=\"typeaheadOptions\" datasets=\"typeaheadData\"\n" + "sf-typeahead\n":"";
+
+
+    if (inContainer) {
+      result.push('<div>');
+    }
+
+    result.push("<div\n" +
+                "  class=\"jt-editor\"\n" +
+                "  ng-click=\"inputService.focusInput()\" >\n");
+
+    if (!inContainer) {
+      result.push(tags);
+    }
+
+    result.push(
     "  <input\n" +
     "    class=\"jt-tag-new\"\n" +
     "    type=\"text\"\n" +
@@ -779,18 +787,45 @@ angular.module("jsTag").run(["$templateCache", function($templateCache) {
     "    ng-hide=\"isThereAnEditedTag\"\n" +
     "    ng-keydown=\"inputService.onKeydown(inputService, tagsCollection, {$event: $event})\"\n" +
     "    placeholder=\"{{options.texts.inputPlaceHolder}}\"\n" +
-    "    auto-grow\n" +
-    "    options=\"exampleOptions\" datasets=\"exampleData\"\n" +
-    "    sf-typeahead\n" +
-    "    js-tag-typeahead\n" +
-    "  />\n" +
+    "    auto-grow\n" + inputOptions +
+    "  />\n");
+      result.push(
     "  <input\n" +
     "    class=\"jt-fake-input\"\n" +
     "    focus-me=\"isThereAnActiveTag\"\n" +
     "    ng-keydown=\"tagsInputService.onActiveTagKeydown(inputService, {$event: $event})\"\n" +
-    "    ng-blur=\"tagsInputService.onActiveTagBlur()\" />\n" +
-    "</div>\n"
-  );
+    "    ng-blur=\"tagsInputService.onActiveTagBlur()\" />\n");
+        result.push(
+    "  <input\n" +
+    "    class=\"jt-fake-input\"\n" +
+    "    focus-me=\"isThereAnActiveTag\"\n" +
+    "    ng-keydown=\"tagsInputService.onActiveTagKeydown(inputService, {$event: $event})\"\n" +
+    "    ng-blur=\"tagsInputService.onActiveTagBlur()\" />\n");
+
+
+
+
+    result.push('</div>');
+    if (inContainer) {
+      result.push('<div class="jt-container">');
+      result.push(tags);
+      result.push('</div>');
+      result.push('</div>');
+    }
+
+    return result.join("\n");
+  };
+
+  var inputOptions = "";
+  $templateCache.put("jsTag/source/templates/default/inline/js-tag.html",
+      template(false, false));
+  $templateCache.put("jsTag/source/templates/default/container/js-tag.html",
+      template(false, true));
+
+  $templateCache.put("jsTag/source/templates/typeahead/inline/js-tag.html",
+      template(true, false));
+  $templateCache.put("jsTag/source/templates/typeahead/container/js-tag.html",
+      template(true, true));
 
 }]);
 
