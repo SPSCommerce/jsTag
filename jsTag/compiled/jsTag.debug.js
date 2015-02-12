@@ -711,7 +711,7 @@ jsTag.directive('jsTagTypeahead', function () {
 
                 /* Do not clear typeahead input if typeahead option 'editable' is set to false
                  * so custom tags are not allowed and breakcode hit shouldn't trigger any change. */
-                if (scope.$eval(attrs.options).editable === false || typeof scope.$eval(attrs.options) === 'undefined') {
+                if (typeof scope.$eval(attrs.options) === 'undefined' || scope.$eval(attrs.options).editable === false) {
                     return;
                 }
 
