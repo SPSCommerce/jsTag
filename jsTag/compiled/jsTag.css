@@ -41,7 +41,6 @@
     background: #D3F3FB;
     border: 1px solid #7DD4F4;
     border-radius: 3px;
-    padding: 3px;
     cursor: default;
     display: inline-block;
     height: 24px;
@@ -65,6 +64,8 @@
 .jt-tag .remove-button {
     cursor: pointer;
     padding-right: 4px;
+    position: relative;
+    top: 1px;
 }
 
 .jt-tag .remove-button:hover {
